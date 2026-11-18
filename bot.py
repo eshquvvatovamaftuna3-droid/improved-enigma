@@ -16,12 +16,13 @@ from telegram.ext import (
 )
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+HOST = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+PORT = int(os.getenv("PORT", "10000"))
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Salom! 🎬\n"
-        "Instagram yoki TikTok video havolasini yuboring."
+        "Salom! 🎬\nInstagram yoki TikTok video havolasini yuboring."
     )
 
 
@@ -33,7 +34,6 @@ def download_video(url, folder):
         "quiet": True,
         "no_warnings": True,
     }
-
     with yt_dlp.YoutubeDL(options) as ydl:
         info = ydl.extract_info(url, download=True)
         return Path(ydl.prepare_filename(info))
@@ -43,10 +43,11 @@ async def get_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     domain = urlparse(url).netloc.lower().removeprefix("www.")
 
-    if domain not in ("instagram.com", "tiktok.com",
-                      "vm.tiktok.com", "vt.tiktok.com"):
+    if domain not in (
+        "instagram.com", "tiktok.com", "vm.tiktok.com", "vt.tiktok.com"
+    ):
         await update.message.reply_text(
-            "Iltimos, Instagram yoki TikTok havolasini yuboring."
+            "Instagram yoki TikTok havolasini yuboring."
         )
         return
 
@@ -55,33 +56,35 @@ async def get_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         with tempfile.TemporaryDirectory() as folder:
             path = await asyncio.to_thread(download_video, url, folder)
-
             if not path.exists():
-                raise Exception("Video fayli topilmadi.")
+                raise Exception("Video topilmadi")
 
             with open(path, "rb") as video:
                 await update.message.reply_video(video=video)
 
         await msg.delete()
-
     except Exception:
         await msg.edit_text(
-            "Video yuklanmadi. Havolani tekshirib qayta urinib ko‘ring."
+            "Video yuklanmadi. Boshqa havola bilan urinib ko‘ring."
         )
 
 
 def main():
-    if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN sozlanmagan!")
+    if not BOT_TOKEN or not HOST:
+        raise RuntimeError("BOT_TOKEN yoki RENDER_EXTERNAL_HOSTNAME yo‘q")
 
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, get_video)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, get_video))
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=BOT_TOKEN,
+        webhook_url=f"https://{HOST}/{BOT_TOKEN}",
     )
-    app.run_polling()
 
 
 if __name__ == "__main__":
     main()
-  
+        
